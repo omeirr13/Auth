@@ -1,82 +1,45 @@
-const express = require('express');
-const bcrypt = require('bcrypt');
-const session = require('express-session');
-const passport = require('passport');
-const initializePassport = require('./passport-config');
-const flash = require('express-flash');
+require('dotenv').config();
 
-initializePassport(
-    passport,
-    email => users.find(user => user.email === email),
-    id => users.find(user => user.id === id)
-);
+const express = require('express');
 
 const app = express();
-app.set('view-engine', 'ejs');
-app.use(express.urlencoded({ extended: false }));
-app.use(flash());
-app.use(session({
-    secret: 'omeirsSecretKey',
-    resave: false,
-    saveUninitialized: false
-}));
-app.use(passport.initialize());
-app.use(passport.session());
+const jwt = require('jsonwebtoken');
 
 
-const users = [];
+app.use(express.json());
 
-app.get('/', checkAuthenticated, (req, res) => {
-    res.render('index.ejs', { user: { name: req.user.name } })
+const posts = [
+    {
+        username: "Omeir",
+        title: "Post 1",
+    },
+    {
+        username: "Ali",
+        title: "Post 2",
+    },
+]
+app.get('/posts', authenticateToken, async (req, res) => {
+    const post = posts.find((post) => post.username === req.user.name);
+    res.json(post);
 });
-app.get('/login', checkNotAuthenticated, (req, res) => {
-    res.render('login.ejs');
-})
-app.get('/register', (req, res) => {
-    res.render('register.ejs');
-})
 
-app.post('/login', passport.authenticate('local', {
-    successRedirect: "/",
-    failureRedirect: "/login",
-    failureFlash: true
-}));
-app.post('/register', checkNotAuthenticated, async (req, res) => {
-    const { name, email, password } = req.body;
-    try {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        users.push({
-            id: Date.now().toString(),
-            name,
-            email,
-            password: hashedPassword
-        })
-        res.redirect('/login');
-    } catch (err) {
-        console.error(err);
-        res.redirect('/login');
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+        return res.status(401).json({ success: false, message: "Did not send bearer token" });
     }
-    console.log(users);
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
+        if (err) {
+            return res.status(403).json({ success: false, message: "Token is no longer valid!" });
+        }
+        req.user = user;
+        next();
+    });
+
+}
+const PORT = 3001;
+app.listen(PORT, () => {
+    console.log("App listening on ", PORT);
 });
-app.delete('/logout', async (req, res) => {
-    req.logOut();
-    return res.redirect('/login');
-})
-
-
-function checkAuthenticated(req, res, next) {
-    if (req.isAuthenticated()) {
-        return next()
-    }
-
-    res.redirect('/login')
-}
-
-function checkNotAuthenticated(req, res, next) {
-    if (req.isAuthenticated()) {
-        return res.redirect('/')
-    }
-    next()
-}
-
-app.listen(3000);
